@@ -1,0 +1,33 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Sanal ortamlar
+venv/
+env/
+deepface_env/
+.venv/
+
+# DeepFace cache (model ağırlıkları)
+.cache/
+.deepface/
+
+# Model ağırlıkları (eğer local weights/ klasöründe tutuyorsanız)
+weights/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Loglar
+*.log
+
+# Sistem dosyaları
+.DS_Store
+Thumbs.db
+
+# IDE ayarları
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
