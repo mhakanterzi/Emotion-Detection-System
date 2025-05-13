@@ -3,15 +3,17 @@
 Basit bir DeepFace + MediaPipe tabanlı Python uygulaması.
 
 ## Özellikler
-- Kamera seçimi  
-- Yüz tespiti ve gerçek zamanlı duygu analizi  
-- Duyguya göre rastgele şarkı önerisi  
-- Duyguya göre komik/rahatlatıcı söz gösterimi  
+- 🔍 **Gerçek zamanlı yüz tespiti** (MediaPipe Face Mesh)  
+- 😊 **Duygu analizi** (DeepFace)  
+- 🎶 **Ruh haline göre şarkı önerisi**  
+- 💬 **Ruh haline göre komik/rahatlatıcı söz gösterimi**  
+- ⚙️ **Kamera seçimli, esnek bir GUI** (Tkinter)  
+- 📊 **FPS ve duygu geçmişi için smoothing** (opsiyonel) 
 
 ## Gereksinimler
-- Python 3.7 veya üzeri  
-- pip  
-- Git  
+- **Python** ≥ 3.7  
+- **pip**  
+- **Git**  
 
 ## Kurulum
 
@@ -36,3 +38,13 @@ Basit bir DeepFace + MediaPipe tabanlı Python uygulaması.
 4. Uygulamanın çalıştırılması
     ```bash
     python emotion_detection.py
+    ```
+    1. Açılan Tkinter penceresinde  
+   - Kullanmak istediğiniz **kamera numarasını** seçin  
+   - “Şarkı öner” ve/veya “Söz göster” seçeneklerini işaretleyin  
+   - **Başlat** butonuna tıklayın  
+
+    2. Yeni pencerede  
+   - Gerçek zamanlı duygu analizi ve yüz mesh görselleştirmesini izleyin  
+   - Önerilen şarkı ve sözler ekranın üstünde belirecektir  
+   - Çıkmak için \`q\` tuşuna basın  
