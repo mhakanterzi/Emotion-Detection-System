@@ -8,6 +8,9 @@ from tkinter import ttk, scrolledtext
 import pyttsx3
 import ollama
 from deepface import DeepFace
+# === NEW (duzenleme icin) ===
+from collections import deque
+# ---------------------------
 
 # === Frame Flip Düzeltme ===
 def flip_x(x):
@@ -38,7 +41,7 @@ def overlay_image(background, overlay, x, y, target_size=None):
     background[y:y+h, x:x+w] = cv2.add(bg, fg)
     return background
 
-# === Emoji PNG’leri ===
+# === Emoji PNG’leri (ROCK çıkarıldı) ===
 emoji_images = {
     "happy":    cv2.imread("emojis/happy.png"),
     "sad":      cv2.imread("emojis/sad.png"),
@@ -50,7 +53,6 @@ emoji_images = {
     "OK":       cv2.imread("emojis/ok.png"),
     "PUNCH":    cv2.imread("emojis/punch.png"),
     "HELLO":    cv2.imread("emojis/hello.png"),
-    "ROCK":     cv2.imread("emojis/rock.png"),
     "TURKIYE":  cv2.imread("emojis/turkiye.png"),
     "LOVE_JP":  cv2.imread("emojis/heart.png"),
 }
@@ -104,14 +106,27 @@ face_mesh = mp_face_mesh.FaceMesh(
 mp_drawing = mp.solutions.drawing_utils
 mp_hands   = mp.solutions.hands
 hands = mp_hands.Hands(
-    static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5
+    static_image_mode=False, max_num_hands=2, min_detection_confidence=0.6,  # NEW: biraz daha güven arttırdık
+    min_tracking_confidence=0.6
 )
+
+# === NEW: El çizimlerini kapat / aç bayrağı ===
+DEBUG_DRAW_HANDS = False   # False => ekrandaki “çizgiler” gider
 
 # === Kamera & State ===
 cap = cv2.VideoCapture(cam_idx)
 frame_count = 0
 emotion_result = None
 last_detected_emotion = "neutral"
+
+# === NEW: Emotion smoothing ===
+EMO_HISTORY = deque(maxlen=7)   # son 7 ölçüm tut
+EMO_MIN_MAJORITY = 4           # aynı duygudan en az 4 kez görülsün
+
+# === Gesture Smoothing Ayarları ===
+gesture_history = []
+HISTORY_LEN = 10
+STABLE_THRESHOLD = 6
 
 # === AI GUI Thread ===
 def start_ai_gui():
@@ -145,7 +160,11 @@ def analyze_emotion(frame):
         res = DeepFace.analyze(frame, actions=['emotion'], enforce_detection=False)
         if isinstance(res, list):
             emotion_result = res
-            last_detected_emotion = res[0]['dominant_emotion']
+            dom = res[0]['dominant_emotion']
+            EMO_HISTORY.append(dom)          # NEW: kuyruğa ekle
+            # çoğunluk varsa güncelle
+            if EMO_HISTORY.count(dom) >= EMO_MIN_MAJORITY:
+                last_detected_emotion = dom
     except Exception as e:
         print("DeepFace error:", e)
 
@@ -154,7 +173,8 @@ prev_time = time.time()
 # === Ana Döngü ===
 while True:
     ret, frame = cap.read()
-    if not ret: break
+    if not ret:
+        break
 
     frame = cv2.flip(frame, 1)
     fh, fw, _ = frame.shape
@@ -191,21 +211,24 @@ while True:
                     fw + 50, 100
                 )
 
-    # --- EL GESTURE ---
+    # --- EL GESTURE ve Smoothing ---
+    stable_gesture = None
     if hand_results.multi_hand_landmarks:
-        for hand_landmarks, handedness in zip(
-                hand_results.multi_hand_landmarks,
-                hand_results.multi_hand_landmarks):
-            
-            # Düzeltme: handedness zipped correctly
-            handedness = hand_results.multi_handedness[hand_results.multi_hand_landmarks.index(hand_landmarks)]
+        for idx, hand_landmarks in enumerate(hand_results.multi_hand_landmarks):
+
+            # === NEW: istersek landmark çiz, istemezsek çizme ===
+            if DEBUG_DRAW_HANDS:
+                mp_drawing.draw_landmarks(
+                    frame_with_space, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            # handedness düzeltilerek alındı
+            handedness = hand_results.multi_handedness[idx]
             label = handedness.classification[0].label  # 'Left' veya 'Right'
-            mp_drawing.draw_landmarks(frame_with_space, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             lm = hand_landmarks.landmark
             wrist_y = lm[mp_hands.HandLandmark.WRIST].y
 
-            # normalized koordinatlar
+            # normalize edilmiş koordinatlar
             tx = flip_x(lm[mp_hands.HandLandmark.THUMB_TIP].x)
             ty = lm[mp_hands.HandLandmark.THUMB_TIP].y
             ix = flip_x(lm[mp_hands.HandLandmark.INDEX_FINGER_TIP].x)
@@ -217,43 +240,62 @@ while True:
             px = flip_x(lm[mp_hands.HandLandmark.PINKY_TIP].x)
             py = lm[mp_hands.HandLandmark.PINKY_TIP].y
 
+            # === NEW: parmak uzatıldı/kıvrıldı kararını iyileştir ===
+            def is_extended(tip, pip):
+                return lm[tip].y < lm[pip].y - 0.02  # küçük tolerans
+
+            idx_ext = is_extended(mp_hands.HandLandmark.INDEX_FINGER_TIP,
+                                  mp_hands.HandLandmark.INDEX_FINGER_PIP)
+            mid_ext = is_extended(mp_hands.HandLandmark.MIDDLE_FINGER_TIP,
+                                  mp_hands.HandLandmark.MIDDLE_FINGER_PIP)
+            ring_ext = is_extended(mp_hands.HandLandmark.RING_FINGER_TIP,
+                                   mp_hands.HandLandmark.RING_FINGER_PIP)
+            pinky_ext = is_extended(mp_hands.HandLandmark.PINKY_TIP,
+                                    mp_hands.HandLandmark.PINKY_PIP)
+            thumb_ext = ty < wrist_y - 0.02
+
             # Kalp mesafesi
             dist_heart = np.linalg.norm([tx-ix, ty-iy])
 
-            # Parmak katlanma kontrolleri
-            middle_folded = lm[mp_hands.HandLandmark.MIDDLE_FINGER_TIP].y > lm[mp_hands.HandLandmark.MIDDLE_FINGER_PIP].y
-            ring_folded   = lm[mp_hands.HandLandmark.RING_FINGER_TIP].y > lm[mp_hands.HandLandmark.RING_FINGER_PIP].y
-            ip_y = lm[mp_hands.HandLandmark.THUMB_IP].y
-            thumb_folded  = ty > ip_y
-
-            # Diğer jestler
-            fingers_closed = (iy > wrist_y and my > wrist_y and ry > wrist_y and py > wrist_y)
-            fingers_open   = (iy < wrist_y and my < wrist_y and ry < wrist_y and py < wrist_y)
-
             # Gesture seçimi
             gesture = None
-            if middle_folded and ring_folded:
-                if thumb_folded:
-                    gesture = "TURKIYE"
-                else:
-                    gesture = "ROCK"
-            elif dist_heart < 0.07 and not fingers_closed:
+            # Türkiye: orta + yüzük kıvrık, baş da kıvrık
+            if (not mid_ext) and (not ring_ext) and (not thumb_ext):
+                gesture = "TURKIYE"
+            # LOVE (Japon kalp) : baş + işaret yakın
+            elif dist_heart < 0.06 and idx_ext and thumb_ext:
                 gesture = "LOVE_JP"
-            elif fingers_open:
+            # HELLO: 4 parmak açık (baş hafif açık olabilir)
+            elif idx_ext and mid_ext and ring_ext and pinky_ext:
                 gesture = "HELLO"
-            elif fingers_closed:
+            # PUNCH (yumruk): hepsi kıvrık
+            elif not (idx_ext or mid_ext or ring_ext or pinky_ext or thumb_ext):
                 gesture = "PUNCH"
-            elif ty < wrist_y:
+            # LIKE (baş yukarı)
+            elif thumb_ext and not (idx_ext or mid_ext or ring_ext or pinky_ext):
                 gesture = "LIKE"
-            elif ix < wrist_y:
+            # OK: baş + işaret ucu yakın, diğer açık
+            elif np.linalg.norm([tx-ix, ty-iy]) < 0.04 and mid_ext and ring_ext and pinky_ext:
                 gesture = "OK"
 
-            if gesture and gesture in emoji_images:
-                frame_with_space = overlay_image(
-                    frame_with_space,
-                    emoji_images[gesture],
-                    fw + 50, 300
-                )
+            # Smoothing buffer
+            gesture_history.append(gesture)
+            if len(gesture_history) > HISTORY_LEN:
+                gesture_history.pop(0)
+
+            # Stabil gesture
+            if gesture and gesture_history.count(gesture) >= STABLE_THRESHOLD:
+                stable_gesture = gesture
+            if stable_gesture and stable_gesture != gesture_history[-1]:
+                gesture_history.clear()
+
+    # Overlay of stable gesture
+    if stable_gesture and stable_gesture in emoji_images:
+        frame_with_space = overlay_image(
+            frame_with_space,
+            emoji_images[stable_gesture],
+            fw + 50, 300
+        )
 
     # FPS
     fps = int(1/(time.time() - prev_time))
