@@ -45,7 +45,6 @@ emoji_images = {
     "fear":     cv2.imread("emojis/fear.png"),
     "neutral":  cv2.imread("emojis/neutral.png"),
     "LIKE":     cv2.imread("emojis/like.png"),
-    "OK":       cv2.imread("emojis/ok.png"),
     "PUNCH":    cv2.imread("emojis/punch.png"),
     "HELLO":    cv2.imread("emojis/hello.png"),
     "TURKIYE":  cv2.imread("emojis/turkiye.png"),
@@ -233,14 +232,6 @@ while True:
         # LIKE
         elif thumb_ext and not (idx_ext or mid_ext or ring_ext or pinky_ext):
             gesture = "LIKE"
-        # OK
-        elif np.linalg.norm([
-                (1 - lm[mp_hands.HandLandmark.THUMB_TIP].x) -
-                (1 - lm[mp_hands.HandLandmark.INDEX_FINGER_TIP].x),
-                lm[mp_hands.HandLandmark.THUMB_TIP].y -
-                lm[mp_hands.HandLandmark.INDEX_FINGER_TIP].y]) < 0.04 \
-             and mid_ext and ring_ext and pinky_ext:
-            gesture = "OK"
 
         gesture_history.append(gesture)
         if len(gesture_history) > HISTORY_LEN:
